@@ -21,8 +21,8 @@ actor ElephantTracker {
 
     public type ElephantPack = {
       packID:Nat32;
-      leaderID:ElephantID;
-      elephantsList : List.List<ElephantID>;
+      leaderID:?ElephantID;
+      elephantsList : Trie.Trie<Nat32, ElephantID>;
       packGeoLoc : Text;
     };
 
@@ -49,7 +49,7 @@ actor ElephantTracker {
       let id = elephant_count;
       elephant_count += 1;
 
-      let newElephant: Elephant = {
+      var newElephant: Elephant = {
         id;           // Benzersiz kimlik
         isHealthy;        // Sağlık durumu
         parent;          // Parent ID (opsiyonel, yoksa null)
@@ -77,17 +77,19 @@ actor ElephantTracker {
        return result;
     };
 
-    public func createPack(leaderID:ElephantID,geoLoc:Text) : async Bool{
+    public func createPack(geoLoc:Text) : async Bool{
         let id = pack_count;
         pack_count += 1;
-        var list = List.List<ElephantID>;
-        let newPack : ElephantPack= {
-          id;
-          leaderID;
-          ;
-          geoLoc;
+        var list : Trie.Trie<Nat32, ElephantID> = Trie.empty();
+
+        var newPack : ElephantPack = {
+          packID = id;
+          leaderID = null;
+          elephantsList=list;
+          packGeoLoc = geoLoc;
           };
 
+        
         
 
         packRegistry := Trie.replace(
@@ -101,14 +103,61 @@ actor ElephantTracker {
     };
 
 
-    public func getPack(packID : Nat32): async ElephantPack{
+    public func getPack(id : Nat32): async ?ElephantPack{
       let result = Trie.find(
         packRegistry,
-        key(packID),
+        key(id),
         Nat32.equal
        );
 
       return result;
-    }
+    };
+
+
+    public func addElephantToPack(packID : Nat32, elephantID : Nat32) : async Bool {
+    // Try to find the pack in the registry
+    let result = Trie.find(
+        packRegistry,
+        key(packID),
+        Nat32.equal
+    );
+
+    switch (result) {
+        case (?elephantPack) { // Found the ElephantPack
+            // Update the elephantsList in the pack
+            let updatedElephantsList = Trie.replace(
+                elephantPack.elephantsList,
+                key(elephantID),
+                Nat32.equal,
+                ?elephantID
+            ).0;
+
+            // Create an updated pack with the modified elephantsList
+            let updatedPack : ElephantPack = {
+                elephantsList = updatedElephantsList;
+                leaderID = elephantPack.leaderID;
+                packGeoLoc = elephantPack.packGeoLoc;
+                packID = packID;
+            };
+
+            // Update the packRegistry
+            packRegistry := Trie.replace(
+                packRegistry,
+                key(packID),
+                Nat32.equal,
+                ?updatedPack
+            ).0;
+
+            return true; // Successfully updated the pack
+        };
+        case (null) { // The pack was not found
+            return false; // Operation failed because packID does not exist
+        };
+    };
+
+
+    
+};
+
 
 }
